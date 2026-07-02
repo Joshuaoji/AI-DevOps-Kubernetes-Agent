@@ -30,3 +30,13 @@ This repo uses **InsForge** as its backend. The CLI auth (`~/.insforge/credentia
 - If auth ever expires, re-link with `npx @insforge/cli link --project-id c511090c-43a4-41a3-942b-2aa00ada7344` (re-login first if needed). `.insforge/` and the agent-skill dirs are git-ignored — never commit them.
 - Gotcha: `npx @insforge/cli db query "<sql>"` with multiple statements returns only an empty `rows` array for the batch; run a standalone `SELECT` afterward to see results.
 - App code (once added) reads InsForge keys from `.env.local`; never hardcode or commit keys. Prefer migrations (`db migrations`) over ad-hoc `db query` for schema changes.
+
+### Project layout & running services
+
+Monorepo: `backend/` (FastAPI) and `frontend/` (Next.js 14 App Router). See `README.md` for the standard run commands; notes below are the non-obvious bits.
+
+- **Backend** lives under `backend/app` (`api`, `core`, `kubernetes`, `ai`, `services`, `models`). Uses a Python venv at `backend/.venv`. Run dev: `cd backend && . .venv/bin/activate && uvicorn app.main:app --reload --port 8000`. Settings load from `backend/.env` via `pydantic-settings`; copy `backend/.env.example` to `backend/.env`. Health: `GET /health`.
+- **Frontend** dev: `cd frontend && npm run dev` (port 3000). Env from `frontend/.env.local` (copy from `.env.example`); `NEXT_PUBLIC_API_BASE_URL` points at the backend.
+- **Gotcha (important):** never run `npm run build` in `frontend/` while `next dev` is running — both use the same `.next/` directory, and the build clobbers it, leaving the dev server serving broken/unstyled assets (Tailwind CSS silently disappears). If styles vanish, stop dev, `rm -rf frontend/.next`, and restart `npm run dev`.
+- The `kubernetes/`, `ai/`, and `services/` modules are intentional placeholders (`pass` stubs). Kubernetes logic, AI reasoning, and OpenRouter/InsForge wiring are added in later iterations — do not break the health endpoint or the run/build flow when implementing them.
+- Docker: `docker compose up --build` runs backend (8000) + frontend (3000). Docker is NOT preinstalled on the VM; prefer the dev servers above for local iteration.
