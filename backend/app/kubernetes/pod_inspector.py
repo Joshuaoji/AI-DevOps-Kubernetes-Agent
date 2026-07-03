@@ -1,8 +1,9 @@
 """Pod inspector.
 
 Runs ``kubectl get pods -A -o json`` and turns the raw output into a concise
-report of unhealthy pods. Parsing is split into a pure ``analyze_pods`` function
-so it can be unit-tested without a cluster.
+report of unhealthy pods, including likely liveness/readiness probe failures.
+Parsing is split into a pure ``analyze_pods`` function so it can be unit-tested
+without a cluster.
 """
 
 from __future__ import annotations
@@ -51,6 +52,65 @@ def _total_restarts(container_statuses: list[dict[str, Any]]) -> int:
     return sum(int(s.get("restartCount", 0)) for s in container_statuses or [])
 
 
+def _probe_definitions(pod_spec: dict[str, Any]) -> dict[str, dict[str, bool]]:
+    """Map container name -> which probes (liveness/readiness) it defines."""
+    definitions: dict[str, dict[str, bool]] = {}
+    containers = list(pod_spec.get("containers", []) or [])
+    containers += list(pod_spec.get("initContainers", []) or [])
+    for container in containers:
+        definitions[container.get("name")] = {
+            "liveness": bool(container.get("livenessProbe")),
+            "readiness": bool(container.get("readinessProbe")),
+        }
+    return definitions
+
+
+def _probe_issues(
+    container_statuses: list[dict[str, Any]],
+    probe_defs: dict[str, dict[str, bool]],
+) -> list[dict[str, Any]]:
+    """Detect likely liveness/readiness probe failures from container status.
+
+    - Readiness: a running container that is not ``Ready`` while it defines a
+      readiness probe (the probe is failing so traffic is withheld).
+    - Liveness: a container that defines a liveness probe and has been restarted
+      after a termination (the failing probe is killing/restarting it).
+    """
+    issues: list[dict[str, Any]] = []
+    for status in container_statuses or []:
+        name = status.get("name")
+        defs = probe_defs.get(name, {})
+        state = status.get("state", {}) or {}
+        running = "running" in state
+        ready = bool(status.get("ready", False))
+        restart_count = int(status.get("restartCount", 0))
+        last_terminated = (status.get("lastState", {}) or {}).get("terminated")
+
+        if defs.get("readiness") and running and not ready:
+            issues.append(
+                {
+                    "type": "readiness",
+                    "container": name,
+                    "detail": "readiness probe failing (container running but not Ready)",
+                }
+            )
+
+        if defs.get("liveness") and restart_count > 0 and last_terminated:
+            issues.append(
+                {
+                    "type": "liveness",
+                    "container": name,
+                    "detail": (
+                        "liveness probe likely restarting the container "
+                        f"(restarts={restart_count}, "
+                        f"lastExitCode={last_terminated.get('exitCode')}, "
+                        f"reason={last_terminated.get('reason')})"
+                    ),
+                }
+            )
+    return issues
+
+
 def analyze_pods(pods_json: dict[str, Any] | None) -> dict[str, Any]:
     """Analyze ``kubectl get pods`` JSON and summarize unhealthy pods."""
     if not pods_json:
@@ -62,6 +122,7 @@ def analyze_pods(pods_json: dict[str, Any] | None) -> dict[str, Any]:
     for pod in items:
         metadata = pod.get("metadata", {}) or {}
         status = pod.get("status", {}) or {}
+        spec = pod.get("spec", {}) or {}
         name = metadata.get("name", "<unknown>")
         namespace = metadata.get("namespace", "default")
         phase = status.get("phase", "Unknown")
@@ -71,20 +132,31 @@ def analyze_pods(pods_json: dict[str, Any] | None) -> dict[str, Any]:
 
         reason, message = _container_problem(container_statuses)
         restart_count = _total_restarts(container_statuses)
+        probe_issues = _probe_issues(container_statuses, _probe_definitions(spec))
 
-        is_problem = reason is not None or phase in PROBLEM_PHASES
+        is_problem = reason is not None or phase in PROBLEM_PHASES or bool(probe_issues)
         if not is_problem:
             continue
+
+        # Prefer an explicit container reason; otherwise a bad phase; otherwise
+        # surface probe failures as a "NotReady" status.
+        if reason:
+            status_label = reason
+        elif phase in PROBLEM_PHASES:
+            status_label = phase
+        else:
+            status_label = "NotReady"
 
         problematic.append(
             {
                 "name": name,
                 "namespace": namespace,
-                "status": reason or phase,
+                "status": status_label,
                 "phase": phase,
                 "reason": reason,
                 "restart_count": restart_count,
                 "message": (message or "").strip() or None,
+                "probe_issues": probe_issues,
             }
         )
 

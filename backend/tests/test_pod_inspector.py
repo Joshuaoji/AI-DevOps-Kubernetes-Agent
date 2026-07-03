@@ -59,3 +59,61 @@ def test_empty_input():
     report = analyze_pods(None)
     assert report["healthy"] is True
     assert report["total_pods"] == 0
+
+
+def _pod_with_probes(name, *, liveness=False, readiness=False, running=True, ready=True,
+                     restarts=0, last_terminated=None, namespace="default"):
+    container_spec = {"name": "app"}
+    if liveness:
+        container_spec["livenessProbe"] = {"httpGet": {"path": "/healthz", "port": 8080}}
+    if readiness:
+        container_spec["readinessProbe"] = {"httpGet": {"path": "/ready", "port": 8080}}
+
+    state = {"running": {"startedAt": "2026-07-03T20:00:00Z"}} if running else {}
+    container_status = {"name": "app", "ready": ready, "restartCount": restarts, "state": state}
+    if last_terminated:
+        container_status["lastState"] = {"terminated": last_terminated}
+
+    return {
+        "metadata": {"name": name, "namespace": namespace},
+        "spec": {"containers": [container_spec]},
+        "status": {"phase": "Running", "containerStatuses": [container_status]},
+    }
+
+
+def test_detects_readiness_probe_failure():
+    data = {"items": [_pod_with_probes("api", readiness=True, running=True, ready=False)]}
+    report = analyze_pods(data)
+    assert report["healthy"] is False
+    pod = report["problematic_pods"][0]
+    assert pod["status"] == "NotReady"
+    assert any(i["type"] == "readiness" for i in pod["probe_issues"])
+
+
+def test_detects_liveness_probe_restart():
+    data = {
+        "items": [
+            _pod_with_probes(
+                "worker", liveness=True, running=True, ready=True, restarts=5,
+                last_terminated={"exitCode": 137, "reason": "Error"},
+            )
+        ]
+    }
+    report = analyze_pods(data)
+    assert report["problematic_count"] == 1
+    pod = report["problematic_pods"][0]
+    liveness = [i for i in pod["probe_issues"] if i["type"] == "liveness"]
+    assert liveness and "restarts=5" in liveness[0]["detail"]
+
+
+def test_ready_pod_with_probes_is_healthy():
+    data = {"items": [_pod_with_probes("web", liveness=True, readiness=True, ready=True)]}
+    report = analyze_pods(data)
+    assert report["healthy"] is True
+
+
+def test_no_probe_defined_does_not_flag_readiness():
+    # Not ready but no readiness probe defined -> not attributed to a probe.
+    data = {"items": [_pod_with_probes("job", readiness=False, running=True, ready=False)]}
+    report = analyze_pods(data)
+    assert report["healthy"] is True
