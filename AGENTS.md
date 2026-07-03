@@ -23,6 +23,10 @@ Key patterns:
 
 ## Cursor Cloud specific instructions
 
+### Communication preference
+
+- When responding in chat, surface your reasoning/thought process — the plan, trade-offs, why you chose an approach, and how you interpret test results — not just the final solution. Keep it skimmable: expand for non-obvious decisions (architecture, debugging, testing strategy) and stay brief for trivial steps.
+
 This repo uses **InsForge** as its backend. The CLI auth (`~/.insforge/credentials.json`) and the project link (`.insforge/project.json`) are already established and persist in the VM snapshot, so you normally do NOT need to re-run `login`/`link`.
 
 - Run the CLI via `npx @insforge/cli <command>` (there is no global `insforge` binary). Verify connection with `npx @insforge/cli current`; health with `npx @insforge/cli diagnose`; backend inventory with `npx @insforge/cli metadata`.
