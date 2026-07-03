@@ -1,14 +1,14 @@
 """FastAPI application entrypoint.
 
-Wires together configuration, logging, CORS, and the API routers. Kubernetes
-and AI logic are intentionally NOT implemented here yet - this is the project
-foundation only.
+Wires together configuration, logging, CORS, and the API routers. The
+Kubernetes investigation layer is available via ``POST /investigate``; AI
+reasoning is intentionally NOT implemented yet.
 """
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import health
+from app.api.routes import health, investigate
 from app.core.config import get_settings
 from app.core.logging import logger, setup_logging
 
@@ -33,6 +33,7 @@ def create_app() -> FastAPI:
     )
 
     app.include_router(health.router)
+    app.include_router(investigate.router)
 
     @app.on_event("startup")
     async def _on_startup() -> None:
