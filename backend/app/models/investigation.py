@@ -8,6 +8,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from app.models.diagnosis import Diagnosis
+
 
 class Investigation(BaseModel):
     """Structured Kubernetes evidence gathered by the investigation layer."""
@@ -21,7 +23,12 @@ class Investigation(BaseModel):
 
 
 class InvestigateResponse(BaseModel):
-    """Envelope returned by ``POST /investigate``."""
+    """Envelope returned by ``POST /investigate``.
+
+    ``investigation`` is the raw evidence (Prompt 02); ``diagnosis`` is the
+    Senior-SRE style AI analysis derived from it (Prompt 03).
+    """
 
     status: str
     investigation: Investigation
+    diagnosis: Diagnosis
