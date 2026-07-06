@@ -31,6 +31,12 @@ class Settings(BaseSettings):
     openrouter_model: str = ""
     kubeconfig_path: str = ""
 
+    # Kubernetes investigation layer settings.
+    kubectl_binary: str = "kubectl"
+    kubectl_timeout_seconds: int = 30
+    # Max log lines fetched per problematic pod (kept small on purpose).
+    log_tail_lines: int = 50
+
     @property
     def cors_origins_list(self) -> list[str]:
         """Return CORS origins as a clean list."""
