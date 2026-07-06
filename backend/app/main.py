@@ -1,8 +1,8 @@
 """FastAPI application entrypoint.
 
-Wires together configuration, logging, CORS, and the API routers. The
-Kubernetes investigation layer is available via ``POST /investigate``; AI
-reasoning is intentionally NOT implemented yet.
+Wires together configuration, logging, CORS, and the API routers. ``POST
+/investigate`` gathers Kubernetes evidence and returns an AI (Senior SRE)
+diagnosis derived from it.
 """
 
 from fastapi import FastAPI

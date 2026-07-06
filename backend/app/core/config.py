@@ -26,10 +26,24 @@ class Settings(BaseSettings):
     # CORS: comma-separated list of allowed origins for the frontend.
     cors_origins: str = "http://localhost:3000"
 
-    # Placeholders wired up in later iterations (kept empty for now).
+    # AI reasoning (OpenRouter, key provisioned by InsForge `ai setup`).
     openrouter_api_key: str = ""
     openrouter_model: str = ""
+    openrouter_base_url: str = "https://openrouter.ai/api/v1"
+    openrouter_timeout_seconds: float = 45.0
+    openrouter_max_retries: int = 2
+    openrouter_max_tokens: int = 1500
     kubeconfig_path: str = ""
+
+    @property
+    def openrouter_configured(self) -> bool:
+        """True when an OpenRouter API key is available."""
+        return bool(self.openrouter_api_key.strip())
+
+    @property
+    def resolved_model(self) -> str:
+        """Model to use, falling back to a sensible default when unset."""
+        return self.openrouter_model.strip() or "openai/gpt-4o-mini"
 
     # Kubernetes investigation layer settings.
     kubectl_binary: str = "kubectl"
